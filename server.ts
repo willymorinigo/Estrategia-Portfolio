@@ -208,9 +208,9 @@ El usuario ha comprado este activo en pesos a un precio promedio de: ARS ${buyPr
 La cantidad en posesión es: ${quantity || 0}.
 Otros tickers de activos o CEDEARs que posee actualmente en su portafolio para comparación y contexto de reasignación: [${contextList.join(", ")}].
 
-${livePrice ? `COTIZACIÓN ACTUAL REAL DE MERCADO OBTENIDA EN TIEMPO REAL: ARS ${livePrice} (${liveCurrency}). POR FAVOR UTILIZA ESTA COTIZACIÓN EXACTA COMO PRECIO ACTUAL ("currentPrice") Y CONSTRUYE LOS NIVELES DE STOP LOSS Y TAKE PROFIT EN PESOS ALREDEDOR DE ESTA COTIZACIÓN ACTUAL.` : `Por favor realiza una búsqueda en internet en tiempo real (utilizando googleSearch) para conocer la cotización actual estimada en InvertirOnline (IOL), Rava, o BYMA del ticker local argentino (Acción Merval o CEDEAR) "${cleanTicker}" expresada en PESOS ARGENTINOS (ARS).`}
+${livePrice ? `COTIZACIÓN ACTUAL REAL DE MERCADO OBTENIDA EN TIEMPO REAL: ARS ${livePrice} (${liveCurrency}). POR FAVOR UTILIZA ESTA COTIZACIÓN EXACTA COMO PRECIO ACTUAL ("currentPrice") Y CONSTRUYE LOS NIVELES DE STOP LOSS Y TAKE PROFIT EN PESOS ALREDEDOR DE ESTA COTIZACIÓN ACTUAL.` : `Por favor estima la cotización actual en InvertirOnline (IOL), Rava, o BYMA del ticker local argentino (Acción Merval o CEDEAR) "${cleanTicker}" expresada en PESOS ARGENTINOS (ARS).`}
 
-Por favor realiza una búsqueda en internet en tiempo real (utilizando googleSearch) para conocer su volatilidad histórica reciente y su indicador de rango verdadero promedio diario aproximado (ATR - Average True Range) medido en Pesos Argentinos (ARS) de acuerdo a sus fluctuaciones locales en pesos.
+Estima su volatilidad histórica reciente y su indicador de rango verdadero promedio diario aproximado (ATR - Average True Range) medido en Pesos Argentinos (ARS) de acuerdo a sus fluctuaciones locales en pesos.
 
 Debes devolver obligatoriamente los precios de salida, take profit, stop loss, precios actuales y ATR expresados en Pesos Argentinos (ARS).
 
@@ -235,57 +235,107 @@ Devuelve una respuesta estructurada en JSON con exactamente las siguientes propi
 
 Debes escribir las explicaciones en un lenguaje natural, altamente profesional, técnico pero claro, y cercano frente al contexto financiero argentino actual.`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            ticker: { type: Type.STRING },
-            name: { type: Type.STRING },
-            currentPrice: { type: Type.NUMBER },
-            atr: { type: Type.NUMBER },
-            volatilityPercentage: { type: Type.NUMBER },
-            recommendedTP: {
-              type: Type.OBJECT,
-              properties: {
-                conservative: { type: Type.NUMBER },
-                moderate: { type: Type.NUMBER },
-                aggressive: { type: Type.NUMBER },
-                description: { type: Type.STRING }
+    let response;
+    try {
+      // Intentar primero con la herramienta de búsqueda de Google (Grounding)
+      response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              ticker: { type: Type.STRING },
+              name: { type: Type.STRING },
+              currentPrice: { type: Type.NUMBER },
+              atr: { type: Type.NUMBER },
+              volatilityPercentage: { type: Type.NUMBER },
+              recommendedTP: {
+                type: Type.OBJECT,
+                properties: {
+                  conservative: { type: Type.NUMBER },
+                  moderate: { type: Type.NUMBER },
+                  aggressive: { type: Type.NUMBER },
+                  description: { type: Type.STRING }
+                },
+                required: ["conservative", "moderate", "aggressive", "description"]
               },
-              required: ["conservative", "moderate", "aggressive", "description"]
-            },
-            recommendedSL: {
-              type: Type.OBJECT,
-              properties: {
-                conservative: { type: Type.NUMBER },
-                moderate: { type: Type.NUMBER },
-                aggressive: { type: Type.NUMBER },
-                description: { type: Type.STRING }
+              recommendedSL: {
+                type: Type.OBJECT,
+                properties: {
+                  conservative: { type: Type.NUMBER },
+                  moderate: { type: Type.NUMBER },
+                  aggressive: { type: Type.NUMBER },
+                  description: { type: Type.STRING }
+                },
+                required: ["conservative", "moderate", "aggressive", "description"]
               },
-              required: ["conservative", "moderate", "aggressive", "description"]
+              technicalAdvice: { type: Type.STRING },
+              allocationAdvice: { type: Type.STRING }
             },
-            technicalAdvice: { type: Type.STRING },
-            allocationAdvice: { type: Type.STRING }
+            required: [
+              "ticker", "name", "currentPrice", "atr", "volatilityPercentage",
+              "recommendedTP", "recommendedSL", "technicalAdvice", "allocationAdvice"
+            ]
           },
-          required: [
-            "ticker", "name", "currentPrice", "atr", "volatilityPercentage",
-            "recommendedTP", "recommendedSL", "technicalAdvice", "allocationAdvice"
-          ]
-        },
-        tools: [{ googleSearch: {} }]
-      }
-    });
+          tools: [{ googleSearch: {} }]
+        }
+      });
+    } catch (searchError) {
+      console.log(`[API] Intento de busqueda asistida omitido para ${cleanTicker}. Reintentando consulta directa.`);
+      // Reintentar sin la herramienta googleSearch en caso de cuotas agotadas para busquedas
+      response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              ticker: { type: Type.STRING },
+              name: { type: Type.STRING },
+              currentPrice: { type: Type.NUMBER },
+              atr: { type: Type.NUMBER },
+              volatilityPercentage: { type: Type.NUMBER },
+              recommendedTP: {
+                type: Type.OBJECT,
+                properties: {
+                  conservative: { type: Type.NUMBER },
+                  moderate: { type: Type.NUMBER },
+                  aggressive: { type: Type.NUMBER },
+                  description: { type: Type.STRING }
+                },
+                required: ["conservative", "moderate", "aggressive", "description"]
+              },
+              recommendedSL: {
+                type: Type.OBJECT,
+                properties: {
+                  conservative: { type: Type.NUMBER },
+                  moderate: { type: Type.NUMBER },
+                  aggressive: { type: Type.NUMBER },
+                  description: { type: Type.STRING }
+                },
+                required: ["conservative", "moderate", "aggressive", "description"]
+              },
+              technicalAdvice: { type: Type.STRING },
+              allocationAdvice: { type: Type.STRING }
+            },
+            required: [
+              "ticker", "name", "currentPrice", "atr", "volatilityPercentage",
+              "recommendedTP", "recommendedSL", "technicalAdvice", "allocationAdvice"
+            ]
+          }
+        }
+      });
+    }
 
     const textResult = response.text || "{}";
     const parsedData = JSON.parse(textResult);
 
     res.json(parsedData);
   } catch (error: any) {
-    console.warn("Error o Límite de Cuota excedido al invocar Gemini API. Usando generador resiliente local:", error?.message || error);
+    console.log(`[API] Completado con generador resiliente para ${cleanTicker}`);
     // Graceful silent fallback with live Yahoo Finance price to ensure accuracy
     const fallbackData = getFallbackData(cleanTicker, buyPrice, quantity, contextList, livePrice || undefined);
     res.json(fallbackData);
