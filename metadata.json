@@ -1,5 +1,5 @@
 {
-  "name": "Gestor de Portafolio y Calculadora de Riesgo",
+  "name": "Smart Asistent",
   "description": "Calculadora inteligente y rastreadora de portafolio para inversores a largo plazo. Calcula ganancias, pérdidas, y sugiere Take Profit (TP) y Stop Loss (SL) personalizados basados en volatilidad histórica (ATR) y análisis técnico avanzado usando IA.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

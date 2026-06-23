@@ -596,14 +596,6 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 flex flex-col">
       
-      {/* Top Banner Warning Context - Minimalist Style */}
-      <div className="bg-slate-900 px-4 py-2 text-center text-[11px] font-bold tracking-widest text-slate-300 uppercase shadow-xs flex items-center justify-center gap-1.5 flex-wrap">
-        <BrainCircuit className="h-4 w-4 text-blue-400" />
-        <span>Rastreador de Portafolio Largo Placista & Asistente Técnico Automatizado</span>
-        <span className="hidden sm:inline">•</span>
-        <span className="text-slate-400">Optimizado por Volatilidad Diaria (ATR)</span>
-      </div>
-
       {/* Main Clean Minimalism Navbar */}
       <nav className="bg-white border-b border-slate-200 sticky top-0 z-40 px-6 sm:px-8 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 flex-wrap">
@@ -613,7 +605,7 @@ export default function App() {
             </div>
             <div>
               <h1 className="text-xl font-semibold tracking-tight text-slate-900">
-                STRATEGA <span className="text-slate-400 font-normal">Finance</span>
+                Smart <span className="text-slate-400 font-normal">Asistent</span>
               </h1>
               <p className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">Portafolio & Gestión de Riesgo Inteligente</p>
             </div>
