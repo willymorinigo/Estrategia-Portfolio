@@ -42,49 +42,54 @@ export const formatNumberAr = (value: number, decimals: number = 2): string => {
  * Only allows up to 2 decimal digits.
  */
 export const formatInputARS = (val: string): string => {
-  if (val === undefined || val === null) return "";
+  if (val === undefined || val === null || val === "") return "";
   
-  // Replace all commas with dots first so we have a unified decimal separator locator
-  let normalized = val.replace(/,/g, ".");
+  // If user typed dot at the end, treat it as a comma (decimal separator)
+  let cleanVal = val.trim();
+  if (cleanVal.endsWith(".")) {
+    cleanVal = cleanVal.slice(0, -1) + ",";
+  }
   
-  // Find the last dot in the string. If there is one, that represents the decimal separator
-  const lastDotIdx = normalized.lastIndexOf(".");
+  // Handle case where user might have multiple commas by keeping only the first one
+  const commaCount = (cleanVal.match(/,/g) || []).length;
+  if (commaCount > 1) {
+    const firstCommaIdx = cleanVal.indexOf(",");
+    const beforeComma = cleanVal.substring(0, firstCommaIdx);
+    const afterComma = cleanVal.substring(firstCommaIdx + 1).replace(/,/g, "");
+    cleanVal = beforeComma + "," + afterComma;
+  }
   
-  let integerPart = "";
-  let decimalPart: string | undefined = undefined;
+  const parts = cleanVal.split(",");
+  const integerPartRaw = parts[0];
+  const decimalPartRaw = parts.length > 1 ? parts[1] : undefined;
   
-  if (lastDotIdx !== -1) {
-    integerPart = normalized.substring(0, lastDotIdx).replace(/\D/g, "");
-    decimalPart = normalized.substring(lastDotIdx + 1).replace(/\D/g, "");
-    // Limit decimal part to exactly 2 digits
-    if (decimalPart.length > 2) {
-      decimalPart = decimalPart.substring(0, 2);
-    }
-  } else {
-    integerPart = normalized.replace(/\D/g, "");
+  // Strip all non-digits from upper integer part (which removes previous thousand dot symbols)
+  const integerPart = integerPartRaw.replace(/\D/g, "");
+  
+  // Strip all non-digits from the decimal part
+  let decimalPart = decimalPartRaw !== undefined ? decimalPartRaw.replace(/\D/g, "") : undefined;
+  
+  if (decimalPart !== undefined && decimalPart.length > 2) {
+    decimalPart = decimalPart.substring(0, 2);
   }
   
   if (!integerPart && decimalPart === undefined) {
     return "";
   }
   
-  if (!integerPart && decimalPart !== undefined) {
-    integerPart = "0";
+  let finalInteger = "0";
+  if (integerPart) {
+    const integerNum = parseInt(integerPart, 10);
+    if (!isNaN(integerNum)) {
+      finalInteger = new Intl.NumberFormat("de-DE").format(integerNum);
+    }
   }
-  
-  const integerNum = parseInt(integerPart, 10);
-  if (isNaN(integerNum)) {
-    return "";
-  }
-  
-  // Use de-DE because it uses dot for thousands and comma for decimal
-  const formattedInteger = new Intl.NumberFormat("de-DE").format(integerNum);
   
   if (decimalPart !== undefined) {
-    return formattedInteger + "," + decimalPart;
+    return finalInteger + "," + decimalPart;
   }
   
-  return formattedInteger;
+  return finalInteger;
 };
 
 /**

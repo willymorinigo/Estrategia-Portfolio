@@ -84,7 +84,7 @@ export default function AddAssetForm({ onAddAsset, isLoading }: AddAssetFormProp
         <div className="grid grid-cols-2 gap-3">
           {/* Precio Promedio de Compra */}
           <div>
-            <label htmlFor="buy-price-input" className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+            <label htmlFor="buy-price-input" className="block text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-1">
               Precio Promedio Compra (ARS)
             </label>
             <div className="relative">
@@ -105,7 +105,7 @@ export default function AddAssetForm({ onAddAsset, isLoading }: AddAssetFormProp
 
           {/* Cantidad */}
           <div>
-            <label htmlFor="quantity-input" className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+            <label htmlFor="quantity-input" className="block text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-1">
               Cant / Acciones
             </label>
             <div className="relative">

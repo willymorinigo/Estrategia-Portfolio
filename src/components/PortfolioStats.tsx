@@ -11,9 +11,10 @@ import { formatARS } from "../utils/formatter";
 interface PortfolioStatsProps {
   holdings: StockHolding[];
   summary: PortfolioSummary;
+  cclRate: number;
 }
 
-export default function PortfolioStats({ holdings, summary }: PortfolioStatsProps) {
+export default function PortfolioStats({ holdings, summary, cclRate }: PortfolioStatsProps) {
   const hasAssets = holdings.length > 0;
 
   // Calculate some supplementary statistics
@@ -36,18 +37,47 @@ export default function PortfolioStats({ holdings, summary }: PortfolioStatsProp
       {/* Total Balance Card */}
       <div className="bg-white p-5 rounded-xl border border-slate-200 flex flex-col justify-between shadow-sm">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Valor Total del Portafolio</span>
+          <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Valor Total Portafolio</span>
           <div className="p-1.5 bg-slate-100 text-slate-600 rounded">
             <Wallet className="h-4 w-4" />
           </div>
         </div>
-        <div className="mt-4">
-          <h3 className="text-2xl font-bold text-slate-900 tracking-tight font-mono">
-            {formatARS(summary.totalCurrentValue)}
-          </h3>
-          <p className="text-xs text-slate-400 mt-1">
-            Inversión inicial: <span className="font-mono text-slate-500 font-medium">{formatARS(summary.totalInvestment)}</span>
-          </p>
+        <div className="mt-3.5 space-y-2">
+          <div>
+            <h3 className="text-2xl font-bold text-slate-900 tracking-tight font-mono leading-none" title="Activos + Liquidez en Broker">
+              {formatARS(summary.totalCombinedValueARS || summary.totalCurrentValue)}
+            </h3>
+            <span className="text-[10px] text-slate-400 font-medium">Activos + Saldo Líquido</span>
+          </div>
+
+          <div className="text-[11px] space-y-1 text-slate-500 border-t border-slate-100 pt-2 font-sans">
+            <div className="flex items-center justify-between">
+              <span>Activos Colocados:</span>
+              <span className="font-mono font-semibold text-slate-700">{formatARS(summary.totalCurrentValue)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>Efectivo Líquido:</span>
+              <span className="font-mono font-semibold text-slate-700">{formatARS(summary.totalCashValueARS || 0)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>Inversión inicial:</span>
+              <span className="font-mono text-slate-400">{formatARS(summary.totalInvestment)}</span>
+            </div>
+          </div>
+
+          <div className="text-[11px] border-t border-slate-100 pt-1.5 flex items-center justify-between">
+            <span className="text-slate-500 font-medium font-sans">Equiv. CCL Total:</span>
+            <span className="font-mono font-bold text-slate-700">
+              ${((summary.totalCombinedValueARS || summary.totalCurrentValue) / cclRate).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+            </span>
+          </div>
+
+          {(summary.totalCombinedValueARS || 0) > 0 && (
+            <div className="flex items-center justify-between text-[9px] text-slate-400 pt-1 font-bold tracking-wider">
+              <span>ACT: {((summary.totalCurrentValue / (summary.totalCombinedValueARS || 1)) * 100).toFixed(0)}%</span>
+              <span>LIQ: {(((summary.totalCashValueARS || 0) / (summary.totalCombinedValueARS || 1)) * 105 - 5 > 0 ? ((summary.totalCashValueARS || 0) / (summary.totalCombinedValueARS || 1)) * 100 : 0).toFixed(0)}%</span>
+            </div>
+          )}
         </div>
       </div>
 

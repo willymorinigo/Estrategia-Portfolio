@@ -36,6 +36,10 @@ export interface PortfolioSummary {
   totalGainLoss: number;
   totalGainLossPercentage: number;
   numberOfAssets: number;
+  cashARS?: number;
+  cashUSD?: number;
+  totalCashValueARS?: number;
+  totalCombinedValueARS?: number;
 }
 
 export interface Transaction {

@@ -20,9 +20,10 @@ import { formatARS } from "../utils/formatter";
 interface RiskAnalysisDashboardProps {
   holding: StockHolding | null;
   isLoading: boolean;
+  cclRate: number;
 }
 
-export default function RiskAnalysisDashboard({ holding, isLoading }: RiskAnalysisDashboardProps) {
+export default function RiskAnalysisDashboard({ holding, isLoading, cclRate }: RiskAnalysisDashboardProps) {
   if (isLoading) {
     return (
       <div className="bg-white p-8 rounded-xl border border-slate-200 shadow-sm flex flex-col items-center justify-center min-h-[450px]">
@@ -74,6 +75,16 @@ export default function RiskAnalysisDashboard({ holding, isLoading }: RiskAnalys
             </span>
           </div>
           <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1.5">{name || `${ticker} Asset`}</h2>
+          
+          <div className="mt-3 flex items-baseline gap-2 flex-wrap">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Precio Actual:</span>
+            <span className="text-base font-bold font-mono text-slate-900">{formatARS(currentPrice)}</span>
+            {cclRate > 0 && (
+              <span className="text-xs font-bold font-mono text-slate-600 bg-slate-100 px-2.5 py-0.5 rounded-md flex items-center gap-1" title="Cotización aproximada convertida por Dólar CCL">
+                ≈ USD {(currentPrice / cclRate).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-[9px] text-slate-400 font-normal">CCL</span>
+              </span>
+            )}
+          </div>
         </div>
         
         {/* Volatility indicators */}
@@ -110,23 +121,44 @@ export default function RiskAnalysisDashboard({ holding, isLoading }: RiskAnalys
           <div className="space-y-2">
             <div className="flex items-center justify-between bg-white p-2.5 rounded border border-slate-200">
               <span className="text-[11px] font-medium text-slate-500">TP Conservador</span>
-              <span className="text-sm font-bold text-orange-650 font-mono">
-                {recommendedTP ? formatARS(recommendedTP.conservative) : "A calcular"}
-              </span>
+              <div className="text-right">
+                <p className="text-sm font-bold text-orange-650 font-mono">
+                  {recommendedTP ? formatARS(recommendedTP.conservative) : "A calcular"}
+                </p>
+                {recommendedTP && cclRate > 0 && (
+                  <p className="text-[9px] font-mono font-medium text-slate-400">
+                    ≈ USD {(recommendedTP.conservative / cclRate).toFixed(2)}
+                  </p>
+                )}
+              </div>
             </div>
             <div className="flex items-center justify-between bg-slate-50/50 p-2.5 rounded border border-slate-350 shadow-xs">
               <span className="text-[11px] font-bold text-slate-900">
                 TP Moderado (Óptimo)
               </span>
-              <span className="text-sm font-bold text-orange-700 font-mono">
-                {recommendedTP ? formatARS(recommendedTP.moderate) : "A calcular"}
-              </span>
+              <div className="text-right">
+                <p className="text-sm font-bold text-orange-700 font-mono">
+                  {recommendedTP ? formatARS(recommendedTP.moderate) : "A calcular"}
+                </p>
+                {recommendedTP && cclRate > 0 && (
+                  <p className="text-[9px] font-mono font-bold text-slate-500">
+                    ≈ USD {(recommendedTP.moderate / cclRate).toFixed(2)}
+                  </p>
+                )}
+              </div>
             </div>
             <div className="flex items-center justify-between bg-white p-2.5 rounded border border-slate-200">
               <span className="text-[11px] font-medium text-slate-500">TP Agresivo</span>
-              <span className="text-sm font-bold text-orange-850 font-mono">
-                {recommendedTP ? formatARS(recommendedTP.aggressive) : "A calcular"}
-              </span>
+              <div className="text-right">
+                <p className="text-sm font-bold text-orange-850 font-mono">
+                  {recommendedTP ? formatARS(recommendedTP.aggressive) : "A calcular"}
+                </p>
+                {recommendedTP && cclRate > 0 && (
+                  <p className="text-[9px] font-mono font-medium text-slate-400">
+                    ≈ USD {(recommendedTP.aggressive / cclRate).toFixed(2)}
+                  </p>
+                )}
+              </div>
             </div>
           </div>
           
@@ -147,23 +179,44 @@ export default function RiskAnalysisDashboard({ holding, isLoading }: RiskAnalys
           <div className="space-y-2">
             <div className="flex items-center justify-between bg-white p-2.5 rounded border border-slate-200">
               <span className="text-[11px] font-medium text-slate-500">SL Conservador</span>
-              <span className="text-sm font-bold text-red-650 font-mono">
-                {recommendedSL ? formatARS(recommendedSL.conservative) : "A calcular"}
-              </span>
+              <div className="text-right">
+                <p className="text-sm font-bold text-red-650 font-mono">
+                  {recommendedSL ? formatARS(recommendedSL.conservative) : "A calcular"}
+                </p>
+                {recommendedSL && cclRate > 0 && (
+                  <p className="text-[9px] font-mono font-medium text-slate-400">
+                    ≈ USD {(recommendedSL.conservative / cclRate).toFixed(2)}
+                  </p>
+                )}
+              </div>
             </div>
             <div className="flex items-center justify-between bg-slate-50/50 p-2.5 rounded border border-slate-350 shadow-xs">
               <span className="text-[11px] font-bold text-slate-900">
                 SL Moderado (Recomendado)
               </span>
-              <span className="text-sm font-bold text-red-700 font-mono">
-                {recommendedSL ? formatARS(recommendedSL.moderate) : "A calcular"}
-              </span>
+              <div className="text-right">
+                <p className="text-sm font-bold text-red-700 font-mono">
+                  {recommendedSL ? formatARS(recommendedSL.moderate) : "A calcular"}
+                </p>
+                {recommendedSL && cclRate > 0 && (
+                  <p className="text-[9px] font-mono font-bold text-slate-500">
+                    ≈ USD {(recommendedSL.moderate / cclRate).toFixed(2)}
+                  </p>
+                )}
+              </div>
             </div>
             <div className="flex items-center justify-between bg-white p-2.5 rounded border border-slate-200">
               <span className="text-[11px] font-medium text-slate-500">SL Agresivo</span>
-              <span className="text-sm font-bold text-red-800 font-mono">
-                {recommendedSL ? formatARS(recommendedSL.aggressive) : "A calcular"}
-              </span>
+              <div className="text-right">
+                <p className="text-sm font-bold text-red-800 font-mono">
+                  {recommendedSL ? formatARS(recommendedSL.aggressive) : "A calcular"}
+                </p>
+                {recommendedSL && cclRate > 0 && (
+                  <p className="text-[9px] font-mono font-medium text-slate-400">
+                    ≈ USD {(recommendedSL.aggressive / cclRate).toFixed(2)}
+                  </p>
+                )}
+              </div>
             </div>
           </div>
 

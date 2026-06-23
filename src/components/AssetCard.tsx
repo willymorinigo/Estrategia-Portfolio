@@ -29,6 +29,7 @@ interface AssetCardProps {
   onDelete: (id: string) => void;
   onUpdatePosition: (id: string, buyPrice: number, quantity: number) => void;
   isActionLoading: boolean;
+  cclRate: number;
 }
 
 export default function AssetCard({
@@ -39,6 +40,7 @@ export default function AssetCard({
   onDelete,
   onUpdatePosition,
   isActionLoading,
+  cclRate,
 }: AssetCardProps) {
   const {
     id,
@@ -55,6 +57,7 @@ export default function AssetCard({
   const [isEditing, setIsEditing] = React.useState(false);
   const [editPrice, setEditPrice] = React.useState(formatInputARS(buyPrice.toString()));
   const [editQty, setEditQty] = React.useState(quantity.toString().replace(/\./g, ","));
+  const [isExpanded, setIsExpanded] = React.useState(false);
 
   // Keep internal state updated if holding changes outside
   React.useEffect(() => {
@@ -152,8 +155,6 @@ export default function AssetCard({
     );
   }
 
-  const [isExpanded, setIsExpanded] = React.useState(false);
-
   const totalCost = buyPrice * quantity;
   const currentValue = currentPrice * quantity;
   const gain = currentValue - totalCost;
@@ -234,13 +235,18 @@ export default function AssetCard({
         </div>
 
         {/* Compact value at a glance */}
-        <div className="text-right px-1 shrink-0">
+        <div className="text-right px-1 shrink-0 flex flex-col items-end">
           <p className="text-[11px] font-mono font-bold text-slate-900">
             {formatARS(currentValue, 0)}
           </p>
           <p className="text-[9px] font-mono text-slate-400">
             {formatNumberAr(quantity, 1)} u. @ {formatARS(currentPrice, 0)}
           </p>
+          {cclRate > 0 && (
+            <span className="text-[8px] font-bold font-mono text-slate-500 bg-slate-100/70 px-1 rounded mt-0.5" title="Conversión aproximada por Dólar CCL">
+              ≈ USD {(currentValue / cclRate).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          )}
         </div>
 
         {/* Action button bar */}
@@ -301,13 +307,18 @@ export default function AssetCard({
 
           <div className="grid grid-cols-2 gap-2 bg-slate-50/50 p-2 rounded-lg border border-slate-100/50">
             <div>
-              <p className="text-[9px] uppercase font-bold text-slate-400 tracking-wider">Tu Compra</p>
+              <p className="text-[9px] uppercase font-bold text-slate-400 tracking-wider">Tu Compra Promedio</p>
               <p className="text-[11px] font-semibold text-slate-700 font-mono">
                 {formatARS(buyPrice)}
               </p>
               <p className="text-[9px] text-slate-400">
                 Cant: <span className="font-mono text-slate-500">{formatNumberAr(quantity, 4)}</span>
               </p>
+              {cclRate > 0 && (
+                <p className="text-[9px] text-slate-500 font-mono font-medium mt-0.5">
+                  Ref: <span className="font-bold">USD {(buyPrice / cclRate).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </p>
+              )}
             </div>
 
             <div>
@@ -319,6 +330,11 @@ export default function AssetCard({
                 {isPositive ? <TrendingUp className="h-2 w-2" /> : <TrendingDown className="h-2 w-2" />}
                 {isPositive ? "+" : ""}{gainPct.toFixed(2)}%
               </p>
+              {cclRate > 0 && (
+                <p className="text-[9px] text-slate-500 font-mono font-medium mt-0.5">
+                  Ref: <span className="font-bold">USD {(currentPrice / cclRate).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </p>
+              )}
             </div>
           </div>
 

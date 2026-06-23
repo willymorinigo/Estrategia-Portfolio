@@ -20,13 +20,15 @@ import {
   BrainCircuit,
   PiggyBank,
   History,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Search
 } from "lucide-react";
 import PortfolioStats from "./components/PortfolioStats";
 import AddAssetForm from "./components/AddAssetForm";
 import AssetCard from "./components/AssetCard";
 import RiskAnalysisDashboard from "./components/RiskAnalysisDashboard";
 import ReinvestmentCalculator from "./components/ReinvestmentCalculator";
+import BrokerCashBalance from "./components/BrokerCashBalance";
 import { formatARS, formatNumberAr } from "./utils/formatter";
 
 // Beautiful preseeds in Argentine Pesos (ARS) - GGAL and Apple CEDEAR on InvertirOnline (IOL)
@@ -83,19 +85,143 @@ const INITIAL_PRESEEDS: StockHolding[] = [
   }
 ];
 
+// Helper to parse strings like "23/6/2026 12:30" or general localized strings
+const parseTransactionDateStr = (dateStr: string): Date => {
+  try {
+    const [dStr, tStr] = dateStr.split(" ");
+    if (!dStr) return new Date();
+    
+    const dParts = dStr.split("/");
+    const day = parseInt(dParts[0], 10);
+    const month = parseInt(dParts[1], 10) - 1; // 0-indexed
+    const year = parseInt(dParts[2], 10);
+    
+    let hours = 0;
+    let minutes = 0;
+    if (tStr) {
+      const tParts = tStr.split(":");
+      hours = parseInt(tParts[0], 10) || 0;
+      minutes = parseInt(tParts[1], 10) || 0;
+      const isPM = dateStr.toLowerCase().includes("p.") || dateStr.toLowerCase().includes("pm");
+      const isAM = dateStr.toLowerCase().includes("a.") || dateStr.toLowerCase().includes("am");
+      if (isPM && hours < 12) hours += 12;
+      if (isAM && hours === 12) hours = 0;
+    }
+    
+    const d = new Date(year, month, day, hours, minutes);
+    if (!isNaN(d.getTime())) return d;
+  } catch (e) {
+    console.warn("Unable to parse transaction date:", dateStr, e);
+  }
+  return new Date(); // fallback
+};
+
+// Helper to get raw Monday date of the week representing a given date
+const getStartOfWeekMonday = (d: Date): Date => {
+  const date = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const day = date.getDay();
+  // Sunday is 0, Monday is 1, etc.
+  const diff = date.getDate() - day + (day === 0 ? -6 : 1);
+  return new Date(date.setDate(diff));
+};
+
+// Helper to group transactions into weekly blocks
+interface WeeklyGroup {
+  weekStart: Date;
+  weekLabel: string;
+  transactions: Transaction[];
+}
+
+const groupTransactionsByWeek = (txs: Transaction[]): WeeklyGroup[] => {
+  const groupsMap = new Map<string, { weekStart: Date; transactions: Transaction[] }>();
+  
+  txs.forEach(tx => {
+    const d = parseTransactionDateStr(tx.date);
+    const monday = getStartOfWeekMonday(d);
+    
+    const yr = monday.getFullYear();
+    const mo = String(monday.getMonth() + 1).padStart(2, '0');
+    const dy = String(monday.getDate()).padStart(2, '0');
+    const key = `${yr}-${mo}-${dy}`;
+    
+    if (!groupsMap.has(key)) {
+      groupsMap.set(key, { weekStart: monday, transactions: [] });
+    }
+    groupsMap.get(key)!.transactions.push(tx);
+  });
+  
+  const sortedKeys = Array.from(groupsMap.keys()).sort((a, b) => b.localeCompare(a));
+  
+  return sortedKeys.map(key => {
+    const { weekStart, transactions } = groupsMap.get(key)!;
+    const sunday = new Date(weekStart);
+    sunday.setDate(weekStart.getDate() + 6);
+    
+    const fmt = (date: Date) => {
+      const dd = String(date.getDate()).padStart(2, '0');
+      const mm = String(date.getMonth() + 1).padStart(2, '0');
+      return `${dd}/${mm}/${date.getFullYear()}`;
+    };
+    
+    return {
+      weekStart,
+      weekLabel: `Semana del ${fmt(weekStart)} al ${fmt(sunday)}`,
+      transactions
+    };
+  });
+};
+
 export default function App() {
   const [holdings, setHoldings] = useState<StockHolding[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [selectedAssetId, setSelectedAssetId] = useState<string>("");
+  const [currentWeekIndex, setCurrentWeekIndex] = useState<number>(0);
   const [isGlobalSyncing, setIsGlobalSyncing] = useState<boolean>(false);
   const [isFormLoading, setIsFormLoading] = useState<boolean>(false);
   const [successMessage, setSuccessMessage] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string>("");
+  const [cclRate, setCclRate] = useState<number>(1265);
+  const [cclUpdatedTime, setCclUpdatedTime] = useState<string>("");
+  const [cashARS, setCashARS] = useState<number>(0);
+  const [cashUSD, setCashUSD] = useState<number>(0);
+  const [searchQuery, setSearchQuery] = useState<string>("");
+
+  const fetchCclRate = async () => {
+    try {
+      const res = await fetch("/api/market/ccl");
+      if (res.ok) {
+        const data = await res.json();
+        if (data && typeof data.venta === "number") {
+          setCclRate(data.venta);
+          if (data.fechaActualizacion) {
+            try {
+              const dateObj = new Date(data.fechaActualizacion);
+              setCclUpdatedTime(dateObj.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }));
+            } catch (e) {
+              setCclUpdatedTime("");
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("Error fetching CCL rate in frontend:", err);
+    }
+  };
 
   // Load from local storage or preseed
   useEffect(() => {
+    fetchCclRate();
     const saved = localStorage.getItem("gestor_portafolio_assets");
     const savedTransactions = localStorage.getItem("gestor_portafolio_transactions");
+    const savedCashARS = localStorage.getItem("gestor_portafolio_cash_ars");
+    const savedCashUSD = localStorage.getItem("gestor_portafolio_cash_usd");
+
+    if (savedCashARS !== null) {
+      setCashARS(Number(savedCashARS) || 0);
+    }
+    if (savedCashUSD !== null) {
+      setCashUSD(Number(savedCashUSD) || 0);
+    }
     
     if (savedTransactions) {
       try {
@@ -131,6 +257,14 @@ export default function App() {
   const saveHoldings = (updated: StockHolding[]) => {
     setHoldings(updated);
     localStorage.setItem("gestor_portafolio_assets", JSON.stringify(updated));
+  };
+
+  const handleUpdateCash = (ars: number, usd: number) => {
+    setCashARS(ars);
+    setCashUSD(usd);
+    localStorage.setItem("gestor_portafolio_cash_ars", ars.toString());
+    localStorage.setItem("gestor_portafolio_cash_usd", usd.toString());
+    triggerNotification("Saldos líquidos en el broker actualizados correctamente.");
   };
 
   const saveTransactions = (updatedTxs: Transaction[]) => {
@@ -301,9 +435,18 @@ export default function App() {
 
   // Sync All (Market sync trigger)
   const handleSyncAll = async () => {
-    if (holdings.length === 0) return;
+    if (holdings.length === 0) {
+      setIsGlobalSyncing(true);
+      await fetchCclRate();
+      setIsGlobalSyncing(false);
+      triggerNotification("Cotización del dólar CCL actualizada con éxito.");
+      return;
+    }
     setIsGlobalSyncing(true);
     setErrorMessage("");
+    
+    // Concurrently fetch CCL rate or first update it
+    await fetchCclRate();
     
     let statsSucceeded = 0;
     let statsFailed = 0;
@@ -415,18 +558,40 @@ export default function App() {
   const totalInvestment = holdings.reduce((acc, curr) => acc + (curr.buyPrice * curr.quantity), 0);
   const totalCurrentValue = holdings.reduce((acc, curr) => acc + (curr.currentPrice * curr.quantity), 0);
   const totalGainLoss = totalCurrentValue - totalInvestment;
-  const totalGainLossPercentage = totalInvestment > 0 ? (totalGainLoss / totalInvestment) * 105 - 5 : 0; // Small adjust, let's keep exact math
   const actualGainLossPct = totalInvestment > 0 ? (totalGainLoss / totalInvestment) * 100 : 0;
+
+  const totalCashValueARS = cashARS + (cashUSD * cclRate);
+  const totalCombinedValueARS = totalCurrentValue + totalCashValueARS;
 
   const portfolioSummary: PortfolioSummary = {
     totalInvestment,
     totalCurrentValue,
     totalGainLoss,
     totalGainLossPercentage: actualGainLossPct,
-    numberOfAssets: holdings.length
+    numberOfAssets: holdings.length,
+    cashARS,
+    cashUSD,
+    totalCashValueARS,
+    totalCombinedValueARS,
   };
 
   const activeHolding = holdings.find(h => h.id === selectedAssetId) || null;
+
+  // Filter holdings based on search query
+  const filteredHoldings = holdings.filter(holding => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return true;
+    return (
+      holding.ticker.toLowerCase().includes(query) ||
+      (holding.name && holding.name.toLowerCase().includes(query))
+    );
+  });
+
+  // Group and paginate transactions by week
+  const weeklyGroups = groupTransactionsByWeek(transactions);
+  const activeWeekIndex = Math.min(Math.max(0, currentWeekIndex), Math.max(0, weeklyGroups.length - 1));
+  const activeWeeklyGroup = weeklyGroups[activeWeekIndex] || null;
+  const activeTransactionsOnWeek = activeWeeklyGroup ? activeWeeklyGroup.transactions : [];
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 flex flex-col">
@@ -455,22 +620,25 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2.5 flex-wrap">
-            <button
-              id="sync-all-button"
-              onClick={handleSyncAll}
-              disabled={isGlobalSyncing || holdings.length === 0}
-              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${isGlobalSyncing ? "animate-spin" : ""}`} />
-              <span>{isGlobalSyncing ? "Actualizando con IA..." : "Sincronizar Todo"}</span>
-            </button>
+            {/* Dólar CCL Live Badge */}
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 rounded-lg border border-slate-200" title="Cotización de referencia del Dólar Cable / CCL en Argentina">
+              <span className="text-[10px] font-bold text-slate-550 uppercase tracking-widest leading-none">Dólar CCL</span>
+              <span className="text-sm font-bold font-mono text-slate-800 leading-none">${cclRate.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span>
+              <span className="text-[9px] text-slate-400 font-medium">ARS</span>
+              {cclUpdatedTime && (
+                <span className="text-[9px] text-slate-400 border-l border-slate-200 pl-1.5 leading-none">
+                  {cclUpdatedTime}
+                </span>
+              )}
+            </div>
 
             <button
-              id="reset-simulation-button"
-              onClick={handleResetPreseeds}
-              className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-600 text-xs font-semibold rounded-lg transition-all cursor-pointer border border-slate-200 shadow-xs"
-            >
-              Reiniciar Simulación
+               id="sync-all-button"
+               onClick={handleSyncAll}
+               className="px-4 py-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
+             >
+              <RefreshCw className={`h-3.5 w-3.5 ${isGlobalSyncing ? "animate-spin" : ""}`} />
+              <span>{isGlobalSyncing ? "Actualizando con IA..." : "Sincronizar Todo"}</span>
             </button>
           </div>
         </div>
@@ -498,6 +666,7 @@ export default function App() {
         <PortfolioStats 
           holdings={holdings} 
           summary={portfolioSummary} 
+          cclRate={cclRate}
         />
 
         {/* Dynamic Dual-Column Workspace */}
@@ -519,13 +688,41 @@ export default function App() {
                 <span className="text-xs font-mono font-bold text-slate-500">Total: {holdings.length}</span>
               </div>
 
+              {holdings.length > 0 && (
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400">
+                    <Search className="h-3.5 w-3.5" />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Buscar activo (Ej: GGAL, AAPL)..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-8 py-2 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-450 focus:border-slate-400"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                      className="absolute inset-y-0 right-0 flex items-center pr-2.5 text-slate-400 hover:text-slate-600 font-bold text-base cursor-pointer"
+                    >
+                      &times;
+                    </button>
+                  )}
+                </div>
+              )}
+
               {holdings.length === 0 ? (
                 <div className="bg-white p-6 rounded-2xl border border-dashed border-slate-200 text-center text-slate-400 text-xs leading-relaxed">
                   No tienes activos registrados. Agrega uno arriba indicando símbolo, costo de compra y cantidad para activar la calculadora.
                 </div>
+              ) : filteredHoldings.length === 0 ? (
+                <div className="bg-white p-6 rounded-2xl border border-dashed border-slate-200 text-center text-slate-400 text-xs italic">
+                  No se encontraron activos que coincidan con la búsqueda.
+                </div>
               ) : (
                 <div className="space-y-4 max-h-[550px] overflow-y-auto pr-1">
-                  {holdings.map((holding) => (
+                  {filteredHoldings.map((holding) => (
                     <AssetCard
                       key={holding.id}
                       holding={holding}
@@ -535,11 +732,20 @@ export default function App() {
                       onDelete={handleDeleteAsset}
                       onUpdatePosition={handleUpdateAsset}
                       isActionLoading={isGlobalSyncing}
+                      cclRate={cclRate}
                     />
                   ))}
                 </div>
               )}
             </div>
+
+            {/* Broker Cash Balance */}
+            <BrokerCashBalance 
+              cashARS={cashARS}
+              cashUSD={cashUSD}
+              cclRate={cclRate}
+              onUpdateCash={handleUpdateCash}
+            />
 
           </div>
 
@@ -550,6 +756,7 @@ export default function App() {
             <RiskAnalysisDashboard 
               holding={activeHolding} 
               isLoading={isFormLoading} 
+              cclRate={cclRate}
             />
 
             {/* Strategic Reallocation Calculator Panel (Tendered compound analyzer) */}
@@ -595,39 +802,74 @@ export default function App() {
               No se registran operaciones en el historial. Las compras se guardan al añadir activos y las ventas se registran haciendo clic en "Registrar Operación" dentro del simulador.
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs font-sans">
-                <thead>
-                  <tr className="border-b border-slate-100 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                    <th className="py-2.5 px-3">Fecha y Hora</th>
-                    <th className="py-2.5 px-3">Instrumento</th>
-                    <th className="py-2.5 px-3">Tipo</th>
-                    <th className="py-2.5 px-3 text-right">Cant. Acciones</th>
-                    <th className="py-2.5 px-3 text-right font-mono">Precio Unitario</th>
-                    <th className="py-2.5 px-3 text-right font-mono">Total Operado</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {transactions.map((tx) => (
-                    <tr key={tx.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="py-3 px-3 text-slate-500 font-mono text-[11px]">{tx.date}</td>
-                      <td className="py-3 px-3 font-bold text-slate-900">{tx.ticker}</td>
-                      <td className="py-3 px-3">
-                        <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold ${
-                          tx.type === "COMPRA" 
-                            ? "bg-green-50 text-green-700 border border-green-200/60" 
-                            : "bg-orange-50 text-orange-700 border border-orange-200/60"
-                        }`}>
-                          {tx.type} {tx.isPartial ? "(Parcial)" : ""}
-                        </span>
-                      </td>
-                      <td className="py-3 px-3 text-right text-slate-700 font-mono">{formatNumberAr(tx.shares, 4)}</td>
-                      <td className="py-3 px-3 text-right font-mono text-slate-700">{formatARS(tx.price)}</td>
-                      <td className="py-3 px-3 text-right font-mono font-bold text-slate-900">{formatARS(tx.totalAmount)}</td>
+            <div className="space-y-4">
+              {weeklyGroups.length > 0 && (
+                <div className="flex items-center justify-between gap-4 bg-slate-50/80 p-3 rounded-lg border border-slate-200/60 flex-wrap">
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      title="Semana anterior (más antigua)"
+                      disabled={activeWeekIndex >= weeklyGroups.length - 1}
+                      onClick={() => setCurrentWeekIndex(activeWeekIndex + 1)}
+                      className="px-2.5 py-1.5 text-[11px] font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-md disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer shadow-2xs"
+                    >
+                      ◀ Anterior (Anual / Pasada)
+                    </button>
+                    <button
+                      type="button"
+                      title="Semana siguiente (más reciente)"
+                      disabled={activeWeekIndex <= 0}
+                      onClick={() => setCurrentWeekIndex(activeWeekIndex - 1)}
+                      className="px-2.5 py-1.5 text-[11px] font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-md disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer shadow-2xs"
+                    >
+                      Siguiente (Reciente) ▶
+                    </button>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[11.5px] font-bold text-slate-800 font-mono bg-white border border-slate-200 px-2.5 py-1 rounded-md shadow-2xs inline-block">
+                      {activeWeeklyGroup?.weekLabel}
+                    </span>
+                    <span className="block text-[10px] text-slate-500 font-bold tracking-tight mt-1">
+                      Mostrando {activeTransactionsOnWeek.length} operaciones • Semana {activeWeekIndex + 1} de {weeklyGroups.length} del historial
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs font-sans">
+                  <thead>
+                    <tr className="border-b border-slate-100 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                      <th className="py-2.5 px-3">Fecha y Hora</th>
+                      <th className="py-2.5 px-3">Instrumento</th>
+                      <th className="py-2.5 px-3">Tipo</th>
+                      <th className="py-2.5 px-3 text-right">Cant. Acciones</th>
+                      <th className="py-2.5 px-3 text-right font-mono">Precio Unitario</th>
+                      <th className="py-2.5 px-3 text-right font-mono">Total Operado</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {activeTransactionsOnWeek.map((tx) => (
+                      <tr key={tx.id} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="py-3 px-3 text-slate-500 font-mono text-[11px]">{tx.date}</td>
+                        <td className="py-3 px-3 font-bold text-slate-900">{tx.ticker}</td>
+                        <td className="py-3 px-3">
+                          <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold ${
+                            tx.type === "COMPRA" 
+                              ? "bg-green-50 text-green-700 border border-green-200/60" 
+                              : "bg-orange-50 text-orange-700 border border-orange-200/60"
+                          }`}>
+                            {tx.type} {tx.isPartial ? "(Parcial)" : ""}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-right text-slate-700 font-mono">{formatNumberAr(tx.shares, 4)}</td>
+                        <td className="py-3 px-3 text-right font-mono text-slate-700">{formatARS(tx.price)}</td>
+                        <td className="py-3 px-3 text-right font-mono font-bold text-slate-900">{formatARS(tx.totalAmount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>

@@ -137,6 +137,34 @@ function getFallbackData(cleanTicker: string, buyPrice: any, quantity: any, cont
   };
 }
 
+// API Endpoint for fetching the real-time Dólar CCL (Contado con Liquidación) rate in Argentina
+app.get("/api/market/ccl", async (req, res) => {
+  try {
+    const response = await fetch("https://dolarapi.com/v1/dolares/contadoconliqui");
+    if (response.ok) {
+      const data = await response.json() as any;
+      if (data && typeof data.venta === "number") {
+        return res.json({
+          compra: data.compra,
+          venta: data.venta,
+          fechaActualizacion: data.fechaActualizacion,
+          source: "DolarAPI"
+        });
+      }
+    }
+  } catch (err) {
+    console.warn("[DolarAPI] Error fetching real-time CCL dollar rate:", err);
+  }
+
+  // Fallback to a realistic market rate in case the api is down or rate limited
+  return res.json({
+    compra: 1255.00,
+    venta: 1265.00,
+    fechaActualizacion: new Date().toISOString(),
+    source: "Fallback"
+  });
+});
+
 // API Endpoint for stock technical analysis and volatility calculation
 app.post("/api/portfolio/analyze", async (req, res) => {
   const { ticker, buyPrice, quantity, otherTickers } = req.body;
