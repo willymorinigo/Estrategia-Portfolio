@@ -456,10 +456,14 @@ export default function App() {
     let statsSucceeded = 0;
     let statsFailed = 0;
     
-    // Process all stock holdings concurrently to maximize performance and prevent timeouts
+    // Process all stock holdings sequentially to maximize performance, prevent socket timeouts, and respect API limits
     const updated = [...holdings];
     
-    const syncPromises = updated.map(async (current, i) => {
+    // Helper delay function
+    const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+    for (let i = 0; i < updated.length; i++) {
+      const current = updated[i];
       try {
         const refreshed = await analyzeStockViaAPI(current.ticker, current.buyPrice, current.quantity);
         updated[i] = {
@@ -478,9 +482,11 @@ export default function App() {
         console.error(`Fallo al sincronizar ${current.ticker}`, e);
         statsFailed++;
       }
-    });
-
-    await Promise.all(syncPromises);
+      // Brief 150ms pause between tickers to guarantee API stability and prevent Yahoo blocking
+      if (i < updated.length - 1) {
+        await delay(150);
+      }
+    }
     
     saveHoldings(updated);
     setIsGlobalSyncing(false);

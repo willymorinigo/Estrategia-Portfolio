@@ -65,7 +65,7 @@ async function fetchCclRateInternal(): Promise<number> {
 // Circuit breaker state for Yahoo Finance API to avoid multiple consecutive timeout delays
 let yahooCircuitBreakerTripped = false;
 let yahooConsecutiveFailures = 0;
-const CIRCUIT_BREAKER_RESET_TIME = 60000; // 1 minute
+const CIRCUIT_BREAKER_RESET_TIME = 15000; // 15 seconds fast reset
 
 function recordYahooSuccess() {
   yahooConsecutiveFailures = 0;
@@ -74,9 +74,9 @@ function recordYahooSuccess() {
 
 function recordYahooFailure() {
   yahooConsecutiveFailures++;
-  if (yahooConsecutiveFailures >= 3) {
+  if (yahooConsecutiveFailures >= 20) { // High threshold to prevent false triggers
     if (!yahooCircuitBreakerTripped) {
-      console.warn("[Yahoo API] Circuit breaker tripped! Yahoo Finance is unresponsive or blocking our requests. Disabling live Yahoo calls temporarily to prevent response timeouts.");
+      console.warn("[Yahoo API] Circuit breaker tripped! Yahoo Finance is unresponsive or blocking our requests. Disabling live Yahoo calls temporarily.");
       yahooCircuitBreakerTripped = true;
       setTimeout(() => {
         yahooCircuitBreakerTripped = false;
@@ -100,7 +100,7 @@ async function fetchFromYahooSingle(ticker: string): Promise<{ price: number; cu
   // Try query1 chart first (fastest and most reliable)
   try {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}`;
-    const res = await fetch(url, { headers, signal: AbortSignal.timeout(1000) });
+    const res = await fetch(url, { headers, signal: AbortSignal.timeout(5000) });
     if (res.ok) {
       const data = await res.json() as any;
       const meta = data?.chart?.result?.[0]?.meta;
@@ -118,7 +118,7 @@ async function fetchFromYahooSingle(ticker: string): Promise<{ price: number; cu
   // Try query1 quote as backup
   try {
     const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${ticker}`;
-    const res = await fetch(url, { headers, signal: AbortSignal.timeout(1000) });
+    const res = await fetch(url, { headers, signal: AbortSignal.timeout(5000) });
     if (res.ok) {
       const data = await res.json() as any;
       const result = data?.quoteResponse?.result?.[0];
@@ -136,7 +136,7 @@ async function fetchFromYahooSingle(ticker: string): Promise<{ price: number; cu
   // Try query2 chart as absolute backup
   try {
     const url = `https://query2.finance.yahoo.com/v8/finance/chart/${ticker}`;
-    const res = await fetch(url, { headers, signal: AbortSignal.timeout(1000) });
+    const res = await fetch(url, { headers, signal: AbortSignal.timeout(5000) });
     if (res.ok) {
       const data = await res.json() as any;
       const meta = data?.chart?.result?.[0]?.meta;
