@@ -62,66 +62,105 @@ async function fetchCclRateInternal(): Promise<number> {
   return 1265.00; // standard fallback
 }
 
+// Circuit breaker state for Yahoo Finance API to avoid multiple consecutive timeout delays
+let yahooCircuitBreakerTripped = false;
+let yahooConsecutiveFailures = 0;
+const CIRCUIT_BREAKER_RESET_TIME = 60000; // 1 minute
+
+function recordYahooSuccess() {
+  yahooConsecutiveFailures = 0;
+  yahooCircuitBreakerTripped = false;
+}
+
+function recordYahooFailure() {
+  yahooConsecutiveFailures++;
+  if (yahooConsecutiveFailures >= 3) {
+    if (!yahooCircuitBreakerTripped) {
+      console.warn("[Yahoo API] Circuit breaker tripped! Yahoo Finance is unresponsive or blocking our requests. Disabling live Yahoo calls temporarily to prevent response timeouts.");
+      yahooCircuitBreakerTripped = true;
+      setTimeout(() => {
+        yahooCircuitBreakerTripped = false;
+        yahooConsecutiveFailures = 0;
+        console.log("[Yahoo API] Circuit breaker reset. Retrying live Yahoo fetches.");
+      }, CIRCUIT_BREAKER_RESET_TIME);
+    }
+  }
+}
+
 // Low-level helper to fetch from Yahoo Finance rotating hosts and endpoints for maximum resilience
 async function fetchFromYahooSingle(ticker: string): Promise<{ price: number; currency: string } | null> {
-  const hosts = [
-    "https://query2.finance.yahoo.com",
-    "https://query1.finance.yahoo.com"
-  ];
-  const paths = [
-    `/v8/finance/chart/${ticker}`,
-    `/v7/finance/quote?symbols=${ticker}`
-  ];
-
   const headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
     "Accept": "application/json, text/plain, */*",
     "Accept-Language": "en-US,en;q=0.9,es;q=0.8",
     "Origin": "https://finance.yahoo.com",
-    "Referer": "https://finance.yahoo.com/",
-    "Cache-Control": "no-cache",
-    "Pragma": "no-cache"
+    "Referer": "https://finance.yahoo.com/"
   };
 
-  for (const host of hosts) {
-    for (const path of paths) {
-      const url = `${host}${path}`;
-      try {
-        const res = await fetch(url, { headers, signal: AbortSignal.timeout(4000) });
-        if (res.ok) {
-          const data = await res.json() as any;
-          
-          // Parse /v8/finance/chart/ format
-          if (path.includes("chart")) {
-            const meta = data?.chart?.result?.[0]?.meta;
-            if (meta && typeof meta.regularMarketPrice === "number") {
-              return {
-                price: meta.regularMarketPrice,
-                currency: meta.currency || "USD"
-              };
-            }
-          } 
-          // Parse /v7/finance/quote format
-          else if (path.includes("quote")) {
-            const result = data?.quoteResponse?.result?.[0];
-            if (result && typeof result.regularMarketPrice === "number") {
-              return {
-                price: result.regularMarketPrice,
-                currency: result.currency || "USD"
-              };
-            }
-          }
-        }
-      } catch (err) {
-        // fail silently, try next host/path combination
+  // Try query1 chart first (fastest and most reliable)
+  try {
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}`;
+    const res = await fetch(url, { headers, signal: AbortSignal.timeout(1000) });
+    if (res.ok) {
+      const data = await res.json() as any;
+      const meta = data?.chart?.result?.[0]?.meta;
+      if (meta && typeof meta.regularMarketPrice === "number") {
+        return {
+          price: meta.regularMarketPrice,
+          currency: meta.currency || "USD"
+        };
       }
     }
+  } catch (err) {
+    // Fail silently, try fallback
   }
+
+  // Try query1 quote as backup
+  try {
+    const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${ticker}`;
+    const res = await fetch(url, { headers, signal: AbortSignal.timeout(1000) });
+    if (res.ok) {
+      const data = await res.json() as any;
+      const result = data?.quoteResponse?.result?.[0];
+      if (result && typeof result.regularMarketPrice === "number") {
+        return {
+          price: result.regularMarketPrice,
+          currency: result.currency || "USD"
+        };
+      }
+    }
+  } catch (err) {
+    // Fail silently, try query2 as last resort
+  }
+
+  // Try query2 chart as absolute backup
+  try {
+    const url = `https://query2.finance.yahoo.com/v8/finance/chart/${ticker}`;
+    const res = await fetch(url, { headers, signal: AbortSignal.timeout(1000) });
+    if (res.ok) {
+      const data = await res.json() as any;
+      const meta = data?.chart?.result?.[0]?.meta;
+      if (meta && typeof meta.regularMarketPrice === "number") {
+        return {
+          price: meta.regularMarketPrice,
+          currency: meta.currency || "USD"
+        };
+      }
+    }
+  } catch (err) {
+    // Fail silently
+  }
+
   return null;
 }
 
 // Main Helper to fetch live ticker price from Yahoo Finance
 async function fetchYahooPrice(ticker: string): Promise<{ price: number; currency: string } | null> {
+  if (yahooCircuitBreakerTripped) {
+    console.log(`[Yahoo API] Consulta de precio en vivo omitida por circuit breaker activo para ${ticker}`);
+    return null;
+  }
+
   const clean = ticker.trim().toUpperCase();
   const yahooTicker = clean.includes(".") ? clean : `${clean}.BA`;
   
@@ -129,6 +168,7 @@ async function fetchYahooPrice(ticker: string): Promise<{ price: number; currenc
   console.log(`[Yahoo API] Intentando obtener cotización local para ${yahooTicker}`);
   const localResult = await fetchFromYahooSingle(yahooTicker);
   if (localResult && localResult.price > 0) {
+    recordYahooSuccess();
     return localResult;
   }
 
@@ -138,6 +178,7 @@ async function fetchYahooPrice(ticker: string): Promise<{ price: number; currenc
     console.log(`[Yahoo API] Buscando cotización global para ${conversion.usTicker} como alternativa`);
     const globalResult = await fetchFromYahooSingle(conversion.usTicker);
     if (globalResult && globalResult.price > 0) {
+      recordYahooSuccess();
       const ccl = await fetchCclRateInternal();
       const convertedPrice = Number(((globalResult.price * ccl) / conversion.ratio).toFixed(2));
       console.log(`[Yahoo API] Convertido exitosamente ${conversion.usTicker} ($${globalResult.price} USD) a ARS usando CCL ($${ccl}) y ratio ${conversion.ratio}: ARS ${convertedPrice}`);
@@ -153,6 +194,7 @@ async function fetchYahooPrice(ticker: string): Promise<{ price: number; currenc
     console.log(`[Yahoo API] Intentando ticker limpio directamente: ${clean}`);
     const cleanResult = await fetchFromYahooSingle(clean);
     if (cleanResult && cleanResult.price > 0) {
+      recordYahooSuccess();
       // If it returned USD, convert it to ARS using CCL as best effort
       if (cleanResult.currency.toUpperCase() === "USD") {
         const ccl = await fetchCclRateInternal();
@@ -166,6 +208,7 @@ async function fetchYahooPrice(ticker: string): Promise<{ price: number; currenc
     }
   }
 
+  recordYahooFailure();
   return null;
 }
 

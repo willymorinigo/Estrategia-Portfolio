@@ -456,10 +456,10 @@ export default function App() {
     let statsSucceeded = 0;
     let statsFailed = 0;
     
-    // Process one-by-one to prevent rate limits or bulk crashes
+    // Process all stock holdings concurrently to maximize performance and prevent timeouts
     const updated = [...holdings];
-    for (let i = 0; i < updated.length; i++) {
-      const current = updated[i];
+    
+    const syncPromises = updated.map(async (current, i) => {
       try {
         const refreshed = await analyzeStockViaAPI(current.ticker, current.buyPrice, current.quantity);
         updated[i] = {
@@ -478,7 +478,9 @@ export default function App() {
         console.error(`Fallo al sincronizar ${current.ticker}`, e);
         statsFailed++;
       }
-    }
+    });
+
+    await Promise.all(syncPromises);
     
     saveHoldings(updated);
     setIsGlobalSyncing(false);
