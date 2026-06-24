@@ -21,7 +21,10 @@ import {
   PiggyBank,
   History,
   FileSpreadsheet,
-  Search
+  Search,
+  Database,
+  Download,
+  Upload
 } from "lucide-react";
 import PortfolioStats from "./components/PortfolioStats";
 import AddAssetForm from "./components/AddAssetForm";
@@ -184,7 +187,9 @@ export default function App() {
   const [cclUpdatedTime, setCclUpdatedTime] = useState<string>("");
   const [cashARS, setCashARS] = useState<number>(0);
   const [cashUSD, setCashUSD] = useState<number>(0);
-  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [searchQuery, setSearchQuery] = useState<string>( "");
+  const [backupJsonText, setBackupJsonText] = useState<string>("");
+  const [showBackupPanel, setShowBackupPanel] = useState<boolean>(false);
 
   const fetchCclRate = async () => {
     try {
@@ -554,6 +559,85 @@ export default function App() {
     }
   };
 
+  // Export entire portfolio data to a JSON download
+  const handleExportPortfolio = () => {
+    try {
+      const backupData = {
+        assets: holdings,
+        transactions: transactions,
+        cashARS: cashARS,
+        cashUSD: cashUSD,
+        version: "1.0",
+        timestamp: new Date().toISOString()
+      };
+      
+      const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(
+        JSON.stringify(backupData, null, 2)
+      )}`;
+      
+      const downloadAnchor = document.createElement("a");
+      downloadAnchor.setAttribute("href", jsonString);
+      downloadAnchor.setAttribute("download", `respaldo_portafolio_${new Date().toISOString().split('T')[0]}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      triggerNotification("¡Portafolio exportado como archivo JSON con éxito!");
+    } catch (err: any) {
+      console.error("Error al exportar:", err);
+      triggerNotification("Error al generar el archivo de exportación.", true);
+    }
+  };
+
+  // Import portfolio data from raw JSON
+  const handleImportPortfolio = (jsonData: string) => {
+    try {
+      if (!jsonData.trim()) {
+        triggerNotification("Por favor ingresa o pega el texto de respaldo JSON.", true);
+        return;
+      }
+      const parsed = JSON.parse(jsonData);
+      if (!parsed || typeof parsed !== "object") {
+        throw new Error("El archivo no tiene un formato de objeto válido.");
+      }
+
+      // Restore assets
+      if (parsed.assets && Array.isArray(parsed.assets)) {
+        setHoldings(parsed.assets);
+        localStorage.setItem("gestor_portafolio_assets", JSON.stringify(parsed.assets));
+        if (parsed.assets.length > 0) {
+          setSelectedAssetId(parsed.assets[0].id);
+        } else {
+          setSelectedAssetId("");
+        }
+      }
+
+      // Restore transactions
+      if (parsed.transactions && Array.isArray(parsed.transactions)) {
+        setTransactions(parsed.transactions);
+        localStorage.setItem("gestor_portafolio_transactions", JSON.stringify(parsed.transactions));
+      }
+
+      // Restore cash
+      if (parsed.cashARS !== undefined) {
+        const ars = Number(parsed.cashARS) || 0;
+        setCashARS(ars);
+        localStorage.setItem("gestor_portafolio_cash_ars", ars.toString());
+      }
+      if (parsed.cashUSD !== undefined) {
+        const usd = Number(parsed.cashUSD) || 0;
+        setCashUSD(usd);
+        localStorage.setItem("gestor_portafolio_cash_usd", usd.toString());
+      }
+
+      triggerNotification("¡Portafolio importado y restaurado correctamente!");
+      setBackupJsonText("");
+      setShowBackupPanel(false);
+    } catch (err: any) {
+      console.error("Error al importar:", err);
+      triggerNotification("Error al procesar el respaldo: " + (err.message || "Formato inválido"), true);
+    }
+  };
+
   // Calculations for Portfolio stats
   const totalInvestment = holdings.reduce((acc, curr) => acc + (curr.buyPrice * curr.quantity), 0);
   const totalCurrentValue = holdings.reduce((acc, curr) => acc + (curr.currentPrice * curr.quantity), 0);
@@ -625,6 +709,19 @@ export default function App() {
             </div>
 
             <button
+               onClick={() => setShowBackupPanel(!showBackupPanel)}
+               className={`px-3 py-2 text-xs font-medium rounded-lg transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer border ${
+                 showBackupPanel 
+                   ? "bg-slate-100 border-slate-300 text-slate-800 font-bold" 
+                   : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+               }`}
+               title="Exportar o Importar datos para transferir tu portafolio entre desarrollo y producción"
+             >
+              <Database className="h-3.5 w-3.5 text-slate-500" />
+              <span>Copias de Respaldo</span>
+            </button>
+
+            <button
                id="sync-all-button"
                onClick={handleSyncAll}
                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
@@ -651,6 +748,136 @@ export default function App() {
           <div className="p-4 bg-rose-50 border border-rose-100 text-rose-800 rounded-2xl text-xs flex items-start gap-1.5 animate-fadeIn shadow-xs leading-relaxed">
             <div className="w-2 h-2 bg-rose-500 rounded-full mt-1.5 shrink-0" />
             <span>{errorMessage}</span>
+          </div>
+        )}
+
+        {/* Respaldo / Transferencia Panel */}
+        {showBackupPanel && (
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm animate-fadeIn space-y-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                  <Database className="h-4 w-4 text-slate-700" />
+                  Copia de Seguridad y Transferencia de Portafolio
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Transfiere de forma segura tus activos, transacciones y balances cargados entre la versión de <b>Desarrollo</b> y la versión <b>Publicada</b>, o guarda un respaldo de seguridad en tu computadora.
+                </p>
+              </div>
+              <button 
+                onClick={() => setShowBackupPanel(false)}
+                className="text-slate-400 hover:text-slate-650 text-xs font-bold font-mono p-1 hover:bg-slate-50 rounded"
+              >
+                ✕ Cerrar
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+              {/* Export Column */}
+              <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                <h4 className="text-xs font-bold text-slate-750 uppercase tracking-widest flex items-center gap-1.5">
+                  <Download className="h-3.5 w-3.5 text-slate-600" />
+                  1. Exportar Datos
+                </h4>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  Descarga un archivo <code>.json</code> con toda la información cargada en esta ventana (activos, efectivo y transacciones) para llevarla a otra versión.
+                </p>
+                
+                <div className="flex gap-2 pt-2">
+                  <button
+                    onClick={handleExportPortfolio}
+                    className="flex-1 py-2 px-3 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg shadow-sm flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    <span>Descargar Archivo JSON</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      const backupObj = {
+                        assets: holdings,
+                        transactions: transactions,
+                        cashARS: cashARS,
+                        cashUSD: cashUSD,
+                        version: "1.0"
+                      };
+                      navigator.clipboard.writeText(JSON.stringify(backupObj, null, 2));
+                      triggerNotification("¡Texto de respaldo copiado al portapapeles con éxito!");
+                    }}
+                    className="py-2 px-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-750 text-xs font-semibold rounded-lg shadow-2xs transition-all cursor-pointer"
+                    title="Copiar texto JSON al portapapeles"
+                  >
+                    Copiar Texto
+                  </button>
+                </div>
+              </div>
+
+              {/* Import Column */}
+              <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                <h4 className="text-xs font-bold text-slate-750 uppercase tracking-widest flex items-center gap-1.5">
+                  <Upload className="h-3.5 w-3.5 text-slate-600" />
+                  2. Importar Datos
+                </h4>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  Pega el texto JSON de respaldo o selecciona un archivo para restaurar tu portafolio completo en esta ventana.
+                </p>
+
+                <div className="space-y-2">
+                  <textarea
+                    rows={2}
+                    placeholder='Pega aquí el código JSON del portafolio...'
+                    value={backupJsonText}
+                    onChange={(e) => setBackupJsonText(e.target.value)}
+                    className="w-full p-2 bg-white border border-slate-200 rounded-lg text-[10px] font-mono text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-500"
+                  />
+                  
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleImportPortfolio(backupJsonText)}
+                      className="flex-1 py-1.5 px-3 bg-emerald-650 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-sm flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                    >
+                      <Upload className="h-3.5 w-3.5" />
+                      <span>Restaurar Portafolio</span>
+                    </button>
+
+                    {/* File upload input as alternative */}
+                    <label className="py-1.5 px-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg shadow-2xs transition-all cursor-pointer text-center flex items-center justify-center gap-1.5">
+                      <input
+                        type="file"
+                        accept=".json"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onload = (event) => {
+                              const text = event.target?.result as string;
+                              if (text) {
+                                handleImportPortfolio(text);
+                              }
+                            };
+                            reader.readAsText(file);
+                          }
+                        }}
+                      />
+                      <span>Cargar Archivo</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-100 pt-3.5 flex flex-wrap items-center justify-between gap-4">
+              <span className="text-[10px] text-slate-400 italic">
+                ⚠️ Al importar se sobrescribirá cualquier activo, efectivo o historial cargados previamente en esta ventana.
+              </span>
+              <button
+                onClick={handleResetPreseeds}
+                className="text-[11px] font-bold text-red-600 hover:text-red-700 hover:underline cursor-pointer"
+              >
+                Reiniciar a valores por defecto
+              </button>
+            </div>
           </div>
         )}
 
