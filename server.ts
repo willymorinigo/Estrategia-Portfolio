@@ -29,53 +29,143 @@ const ai = apiKey
     })
   : null;
 
-// Helper to fetch live ticker price from Yahoo Finance
-async function fetchYahooPrice(ticker: string): Promise<{ price: number; currency: string } | null> {
-  const clean = ticker.trim().toUpperCase();
-  // Standardize tickers to Argentine BYMA format if they don't have suffix
-  // e.g. GGAL -> GGAL.BA, AAPL -> AAPL.BA
-  const yahooTicker = clean.includes(".") ? clean : `${clean}.BA`;
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooTicker}`;
-  
+// Global CEDEAR & ADR conversion ratios to map US prices back to ARS accurately
+const GLOBAL_CONVERSIONS: Record<string, { usTicker: string; ratio: number }> = {
+  AAPL: { usTicker: "AAPL", ratio: 20 },
+  TSLA: { usTicker: "TSLA", ratio: 15 },
+  KO: { usTicker: "KO", ratio: 5 },
+  MELI: { usTicker: "MELI", ratio: 120 },
+  SPY: { usTicker: "SPY", ratio: 20 },
+  MSFT: { usTicker: "MSFT", ratio: 30 },
+  NVDA: { usTicker: "NVDA", ratio: 24 },
+  GGAL: { usTicker: "GGAL", ratio: 10 },
+  BMA: { usTicker: "BMA", ratio: 10 },
+  YPF: { usTicker: "YPF", ratio: 1 },
+  YPFD: { usTicker: "YPF", ratio: 1 },
+  PAMP: { usTicker: "PAM", ratio: 25 },
+  LOMA: { usTicker: "LOMA", ratio: 5 }
+};
+
+// Internal helper to fetch live CCL dollar rate
+async function fetchCclRateInternal(): Promise<number> {
   try {
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    const response = await fetch("https://dolarapi.com/v1/dolares/contadoconliqui");
+    if (response.ok) {
+      const data = await response.json() as any;
+      if (data && typeof data.venta === "number") {
+        return data.venta;
       }
-    });
-    if (!res.ok) {
-      // If .BA failed, try the clean code directly (e.g. global stocks)
-      if (clean !== yahooTicker) {
-        const fallbackUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${clean}`;
-        const fallbackRes = await fetch(fallbackUrl, {
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-          }
-        });
-        if (fallbackRes.ok) {
-          const data = await fallbackRes.json() as any;
-          const meta = data?.chart?.result?.[0]?.meta;
-          if (meta && typeof meta.regularMarketPrice === "number") {
-            return {
-              price: meta.regularMarketPrice,
-              currency: meta.currency || "USD"
-            };
-          }
-        }
-      }
-      return null;
-    }
-    const data = await res.json() as any;
-    const meta = data?.chart?.result?.[0]?.meta;
-    if (meta && typeof meta.regularMarketPrice === "number") {
-      return {
-        price: meta.regularMarketPrice,
-        currency: meta.currency || "ARS"
-      };
     }
   } catch (err) {
-    console.warn(`[Yahoo] Error fetching price for ${yahooTicker}:`, err);
+    console.warn("[DolarAPI] Error fetching internal CCL dollar rate:", err);
   }
+  return 1265.00; // standard fallback
+}
+
+// Low-level helper to fetch from Yahoo Finance rotating hosts and endpoints for maximum resilience
+async function fetchFromYahooSingle(ticker: string): Promise<{ price: number; currency: string } | null> {
+  const hosts = [
+    "https://query2.finance.yahoo.com",
+    "https://query1.finance.yahoo.com"
+  ];
+  const paths = [
+    `/v8/finance/chart/${ticker}`,
+    `/v7/finance/quote?symbols=${ticker}`
+  ];
+
+  const headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9,es;q=0.8",
+    "Origin": "https://finance.yahoo.com",
+    "Referer": "https://finance.yahoo.com/",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache"
+  };
+
+  for (const host of hosts) {
+    for (const path of paths) {
+      const url = `${host}${path}`;
+      try {
+        const res = await fetch(url, { headers, signal: AbortSignal.timeout(4000) });
+        if (res.ok) {
+          const data = await res.json() as any;
+          
+          // Parse /v8/finance/chart/ format
+          if (path.includes("chart")) {
+            const meta = data?.chart?.result?.[0]?.meta;
+            if (meta && typeof meta.regularMarketPrice === "number") {
+              return {
+                price: meta.regularMarketPrice,
+                currency: meta.currency || "USD"
+              };
+            }
+          } 
+          // Parse /v7/finance/quote format
+          else if (path.includes("quote")) {
+            const result = data?.quoteResponse?.result?.[0];
+            if (result && typeof result.regularMarketPrice === "number") {
+              return {
+                price: result.regularMarketPrice,
+                currency: result.currency || "USD"
+              };
+            }
+          }
+        }
+      } catch (err) {
+        // fail silently, try next host/path combination
+      }
+    }
+  }
+  return null;
+}
+
+// Main Helper to fetch live ticker price from Yahoo Finance
+async function fetchYahooPrice(ticker: string): Promise<{ price: number; currency: string } | null> {
+  const clean = ticker.trim().toUpperCase();
+  const yahooTicker = clean.includes(".") ? clean : `${clean}.BA`;
+  
+  // 1. Try local BYMA ticker (e.g. GGAL.BA) first to get native ARS price
+  console.log(`[Yahoo API] Intentando obtener cotización local para ${yahooTicker}`);
+  const localResult = await fetchFromYahooSingle(yahooTicker);
+  if (localResult && localResult.price > 0) {
+    return localResult;
+  }
+
+  // 2. If local BYMA failed, check if we have a global US conversion mapping
+  const conversion = GLOBAL_CONVERSIONS[clean];
+  if (conversion) {
+    console.log(`[Yahoo API] Buscando cotización global para ${conversion.usTicker} como alternativa`);
+    const globalResult = await fetchFromYahooSingle(conversion.usTicker);
+    if (globalResult && globalResult.price > 0) {
+      const ccl = await fetchCclRateInternal();
+      const convertedPrice = Number(((globalResult.price * ccl) / conversion.ratio).toFixed(2));
+      console.log(`[Yahoo API] Convertido exitosamente ${conversion.usTicker} ($${globalResult.price} USD) a ARS usando CCL ($${ccl}) y ratio ${conversion.ratio}: ARS ${convertedPrice}`);
+      return {
+        price: convertedPrice,
+        currency: "ARS"
+      };
+    }
+  }
+
+  // 3. Last resort: Try standard clean ticker directly
+  if (clean !== yahooTicker) {
+    console.log(`[Yahoo API] Intentando ticker limpio directamente: ${clean}`);
+    const cleanResult = await fetchFromYahooSingle(clean);
+    if (cleanResult && cleanResult.price > 0) {
+      // If it returned USD, convert it to ARS using CCL as best effort
+      if (cleanResult.currency.toUpperCase() === "USD") {
+        const ccl = await fetchCclRateInternal();
+        const converted = Number((cleanResult.price * ccl).toFixed(2));
+        return {
+          price: converted,
+          currency: "ARS"
+        };
+      }
+      return cleanResult;
+    }
+  }
+
   return null;
 }
 
@@ -101,12 +191,13 @@ function getFallbackData(cleanTicker: string, buyPrice: any, quantity: any, cont
   const tickerUpper = cleanTicker.toUpperCase();
   const catalogEntry = stockCatalog[tickerUpper];
   
-  // Decide base price: first yahoo live price, then catalog value, then user's buy price
+  // Decide base price: first yahoo live price, then the user's actual buyPrice, then catalog value
   let currentPrice = Number(livePrice) || 0;
   if (currentPrice <= 0) {
-    const basePrice = catalogEntry ? catalogEntry.price : (Number(buyPrice) || 1500);
-    // Generate realistic price fluctuation around base price as secondary backup
-    const fluctuation = 1 + (Math.random() * 0.12 - 0.05); // -5% to +7%
+    const hasBuyPrice = Number(buyPrice) && Number(buyPrice) > 0;
+    const basePrice = hasBuyPrice ? Number(buyPrice) : (catalogEntry ? catalogEntry.price : 1500);
+    // Generate subtle price fluctuation (+/- 1.5%) to simulate standard minor daily movement
+    const fluctuation = 1 + (Math.random() * 0.03 - 0.015);
     currentPrice = Number((basePrice * fluctuation).toFixed(2));
   }
   

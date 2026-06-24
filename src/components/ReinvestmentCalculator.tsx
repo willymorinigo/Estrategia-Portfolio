@@ -33,10 +33,10 @@ export default function ReinvestmentCalculator({ holdings, selectedHolding, onRe
   useEffect(() => {
     if (selectedHolding) {
       setActiveAsset(selectedHolding);
-      setExitPriceInput(formatInputARS(selectedHolding.currentPrice.toString()));
+      setExitPriceInput(formatInputARS((selectedHolding.currentPrice ?? 0).toString()));
     } else if (holdings.length > 0 && !activeAsset) {
       setActiveAsset(holdings[0]);
-      setExitPriceInput(formatInputARS(holdings[0].currentPrice.toString()));
+      setExitPriceInput(formatInputARS((holdings[0].currentPrice ?? 0).toString()));
     }
   }, [selectedHolding, holdings]);
 
@@ -70,7 +70,7 @@ export default function ReinvestmentCalculator({ holdings, selectedHolding, onRe
     const selected = holdings.find(h => h.id === e.target.value);
     if (selected) {
       setActiveAsset(selected);
-      setExitPriceInput(formatInputARS(selected.currentPrice.toString()));
+      setExitPriceInput(formatInputARS((selected.currentPrice ?? 0).toString()));
     }
   };
 
