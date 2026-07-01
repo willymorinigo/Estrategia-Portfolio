@@ -10,7 +10,7 @@ export interface StockHolding {
   buyPrice: number;
   quantity: number;
   currentPrice: number;
-  currentPriceSource: "manual" | "gemini";
+  currentPriceSource: "manual" | "gemini" | "local-fallback";
   atr?: number; // Average True Range (Volatility indicator)
   volatilityPercentage?: number; // Historical annualized or recent volatility
   recommendedTP?: {
