@@ -18,7 +18,7 @@ import {
   ChevronDown,
   ChevronUp
 } from "lucide-react";
-import { formatARS, formatNumberAr, formatInputARS, parseInputARS } from "../utils/formatter";
+import { formatARS, formatNumberAr, formatInputARS, parseInputARS, formatInputQty } from "../utils/formatter";
 
 interface AssetCardProps {
   key?: string;
@@ -55,20 +55,20 @@ export default function AssetCard({
   } = holding;
 
   const [isEditing, setIsEditing] = React.useState(false);
-  const [editPrice, setEditPrice] = React.useState(formatInputARS(buyPrice.toString()));
-  const [editQty, setEditQty] = React.useState(quantity.toString().replace(/\./g, ","));
+  const [editPrice, setEditPrice] = React.useState(formatNumberAr(buyPrice, 2));
+  const [editQty, setEditQty] = React.useState(formatNumberAr(quantity, 4));
   const [isExpanded, setIsExpanded] = React.useState(false);
 
   // Keep internal state updated if holding changes outside
   React.useEffect(() => {
-    setEditPrice(formatInputARS(buyPrice.toString()));
-    setEditQty(quantity.toString().replace(/\./g, ","));
+    setEditPrice(formatNumberAr(buyPrice, 2));
+    setEditQty(formatNumberAr(quantity, 4));
   }, [buyPrice, quantity]);
 
   const handleStartEdit = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setEditPrice(formatInputARS(buyPrice.toString()));
-    setEditQty(quantity.toString().replace(/\./g, ","));
+    setEditPrice(formatNumberAr(buyPrice, 2));
+    setEditQty(formatNumberAr(quantity, 4));
     setIsEditing(true);
   };
 
@@ -115,7 +115,7 @@ export default function AssetCard({
               <input
                 type="text"
                 value={editQty}
-                onChange={(e) => setEditQty(e.target.value)}
+                onChange={(e) => setEditQty(formatInputQty(e.target.value))}
                 className="w-full px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-mono text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-500"
               />
             </div>

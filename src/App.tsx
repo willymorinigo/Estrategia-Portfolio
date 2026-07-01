@@ -412,23 +412,28 @@ export default function App() {
     setIsGlobalSyncing(true);
     try {
       const refreshedData = await analyzeStockViaAPI(ticker, buyPrice, quantity);
-      const updated = holdings.map(h => {
-        if (h.id === id) {
-          return {
-            ...h,
-            currentPrice: refreshedData.currentPrice,
-            atr: refreshedData.atr,
-            volatilityPercentage: refreshedData.volatilityPercentage,
-            recommendedTP: refreshedData.recommendedTP,
-            recommendedSL: refreshedData.recommendedSL,
-            technicalAdvice: refreshedData.technicalAdvice,
-            allocationAdvice: refreshedData.allocationAdvice,
-            lastUpdated: refreshedData.lastUpdated
-          };
-        }
-        return h;
+      setHoldings(prevHoldings => {
+        const updated = prevHoldings.map(h => {
+          if (h.id === id) {
+            return {
+              ...h,
+              buyPrice: buyPrice,
+              quantity: quantity,
+              currentPrice: refreshedData.currentPrice,
+              atr: refreshedData.atr,
+              volatilityPercentage: refreshedData.volatilityPercentage,
+              recommendedTP: refreshedData.recommendedTP,
+              recommendedSL: refreshedData.recommendedSL,
+              technicalAdvice: refreshedData.technicalAdvice,
+              allocationAdvice: refreshedData.allocationAdvice,
+              lastUpdated: refreshedData.lastUpdated
+            };
+          }
+          return h;
+        });
+        localStorage.setItem("gestor_portafolio_assets", JSON.stringify(updated));
+        return updated;
       });
-      saveHoldings(updated);
       triggerNotification(`Valores y márgenes de ${ticker} actualizados mediante IA.`);
     } catch (error: any) {
       console.error(error);

@@ -39,57 +39,71 @@ export const formatNumberAr = (value: number, decimals: number = 2): string => {
 /**
  * Formats a raw user input on-the-fly to Argentine local style.
  * Uses dot (.) as thousands separator and comma (,) as decimal separator.
- * Only allows up to 2 decimal digits.
+ * Allows custom maximum decimal digits.
  */
-export const formatInputARS = (val: string): string => {
-  if (val === undefined || val === null || val === "") return "";
+export const formatInputArNumber = (val: string, maxDecimals: number = 2): string => {
+  if (val === undefined || val === null) return "";
   
-  // If user typed dot at the end, treat it as a comma (decimal separator)
-  let cleanVal = val.trim();
+  // 1. Keep only digits, dots, and commas
+  let cleanVal = val.replace(/[^0-9.,]/g, "");
+  
+  // 2. If user types a dot at the end (e.g. "123."), convert it to a comma
+  // so it acts as a decimal separator in Argentine format.
   if (cleanVal.endsWith(".")) {
     cleanVal = cleanVal.slice(0, -1) + ",";
   }
   
-  // Handle case where user might have multiple commas by keeping only the first one
-  const commaCount = (cleanVal.match(/,/g) || []).length;
-  if (commaCount > 1) {
-    const firstCommaIdx = cleanVal.indexOf(",");
-    const beforeComma = cleanVal.substring(0, firstCommaIdx);
-    const afterComma = cleanVal.substring(firstCommaIdx + 1).replace(/,/g, "");
-    cleanVal = beforeComma + "," + afterComma;
-  }
+  // 3. Under Argentine style, only the comma (",") is the decimal separator.
+  // Any dots in the input are thousands separators. We strip all dots to get the clean base number.
+  const hasComma = cleanVal.includes(",");
   
-  const parts = cleanVal.split(",");
-  const integerPartRaw = parts[0];
-  const decimalPartRaw = parts.length > 1 ? parts[1] : undefined;
-  
-  // Strip all non-digits from upper integer part (which removes previous thousand dot symbols)
-  const integerPart = integerPartRaw.replace(/\D/g, "");
-  
-  // Strip all non-digits from the decimal part
-  let decimalPart = decimalPartRaw !== undefined ? decimalPartRaw.replace(/\D/g, "") : undefined;
-  
-  if (decimalPart !== undefined && decimalPart.length > 2) {
-    decimalPart = decimalPart.substring(0, 2);
-  }
-  
-  if (!integerPart && decimalPart === undefined) {
-    return "";
-  }
-  
-  let finalInteger = "0";
-  if (integerPart) {
-    const integerNum = parseInt(integerPart, 10);
-    if (!isNaN(integerNum)) {
-      finalInteger = new Intl.NumberFormat("de-DE").format(integerNum);
+  if (hasComma) {
+    // Split by the first comma
+    const parts = cleanVal.split(",");
+    const integerPartRaw = parts[0];
+    const decimalPartRaw = parts.slice(1).join(""); // combine anything after
+    
+    // Clean both parts to only contain digits
+    const integerPart = integerPartRaw.replace(/\D/g, "");
+    let decimalPart = decimalPartRaw.replace(/\D/g, "");
+    
+    if (decimalPart.length > maxDecimals) {
+      decimalPart = decimalPart.substring(0, maxDecimals);
     }
-  }
-  
-  if (decimalPart !== undefined) {
+    
+    let finalInteger = "0";
+    if (integerPart) {
+      const integerNum = parseInt(integerPart, 10);
+      if (!isNaN(integerNum)) {
+        finalInteger = new Intl.NumberFormat("es-AR", { useGrouping: true }).format(integerNum);
+      }
+    }
+    
     return finalInteger + "," + decimalPart;
+  } else {
+    // No comma in the input. Strip all dots (thousands separators) to get the clean number.
+    const integerPart = cleanVal.replace(/\./g, "").replace(/\D/g, "");
+    if (!integerPart) return "";
+    
+    const integerNum = parseInt(integerPart, 10);
+    if (isNaN(integerNum)) return "";
+    
+    return new Intl.NumberFormat("es-AR", { useGrouping: true }).format(integerNum);
   }
-  
-  return finalInteger;
+};
+
+/**
+ * Formats a raw user input on-the-fly for price fields (2 decimal digits).
+ */
+export const formatInputARS = (val: string): string => {
+  return formatInputArNumber(val, 2);
+};
+
+/**
+ * Formats a raw user input on-the-fly for quantity fields (4 decimal digits).
+ */
+export const formatInputQty = (val: string): string => {
+  return formatInputArNumber(val, 4);
 };
 
 /**

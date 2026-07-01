@@ -33,10 +33,10 @@ export default function ReinvestmentCalculator({ holdings, selectedHolding, onRe
   useEffect(() => {
     if (selectedHolding) {
       setActiveAsset(selectedHolding);
-      setExitPriceInput(formatInputARS((selectedHolding.currentPrice ?? 0).toString()));
+      setExitPriceInput(formatNumberAr(selectedHolding.currentPrice ?? 0, 2));
     } else if (holdings.length > 0 && !activeAsset) {
       setActiveAsset(holdings[0]);
-      setExitPriceInput(formatInputARS((holdings[0].currentPrice ?? 0).toString()));
+      setExitPriceInput(formatNumberAr(holdings[0].currentPrice ?? 0, 2));
     }
   }, [selectedHolding, holdings]);
 
@@ -70,7 +70,7 @@ export default function ReinvestmentCalculator({ holdings, selectedHolding, onRe
     const selected = holdings.find(h => h.id === e.target.value);
     if (selected) {
       setActiveAsset(selected);
-      setExitPriceInput(formatInputARS((selected.currentPrice ?? 0).toString()));
+      setExitPriceInput(formatNumberAr(selected.currentPrice ?? 0, 2));
     }
   };
 
@@ -154,21 +154,21 @@ export default function ReinvestmentCalculator({ holdings, selectedHolding, onRe
               <>
                 <button
                   type="button"
-                  onClick={() => setExitPriceInput(formatInputARS(currentAsset.recommendedTP!.conservative.toString()))}
+                  onClick={() => setExitPriceInput(formatNumberAr(currentAsset.recommendedTP!.conservative, 2))}
                   className="px-1.5 py-0.5 bg-slate-50 hover:bg-slate-100 text-[10px] text-orange-600 font-bold border border-slate-150 rounded transition-colors cursor-pointer"
                 >
                   cons
                 </button>
                 <button
                   type="button"
-                  onClick={() => setExitPriceInput(formatInputARS(currentAsset.recommendedTP!.moderate.toString()))}
+                  onClick={() => setExitPriceInput(formatNumberAr(currentAsset.recommendedTP!.moderate, 2))}
                   className="px-1.5 py-0.5 bg-slate-50 hover:bg-slate-100 text-[10px] text-orange-700 font-bold border border-slate-150 rounded transition-colors cursor-pointer"
                 >
                   mod
                 </button>
                 <button
                   type="button"
-                  onClick={() => setExitPriceInput(formatInputARS(currentAsset.recommendedTP!.aggressive.toString()))}
+                  onClick={() => setExitPriceInput(formatNumberAr(currentAsset.recommendedTP!.aggressive, 2))}
                   className="px-1.5 py-0.5 bg-slate-50 hover:bg-slate-100 text-[10px] text-orange-850 font-bold border border-slate-150 rounded transition-colors cursor-pointer"
                 >
                   agr

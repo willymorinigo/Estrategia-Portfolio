@@ -5,7 +5,7 @@
 
 import React, { useState } from "react";
 import { Plus, Search, DollarSign, Archive, CircleAlert } from "lucide-react";
-import { formatInputARS, parseInputARS } from "../utils/formatter";
+import { formatInputARS, parseInputARS, formatInputQty } from "../utils/formatter";
 
 interface AddAssetFormProps {
   onAddAsset: (ticker: string, buyPrice: number, quantity: number) => void;
@@ -117,7 +117,7 @@ export default function AddAssetForm({ onAddAsset, isLoading }: AddAssetFormProp
                 type="text"
                 placeholder="100,0"
                 value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
+                onChange={(e) => setQuantity(formatInputQty(e.target.value))}
                 disabled={isLoading}
                 className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-mono text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-500 disabled:opacity-50"
               />
